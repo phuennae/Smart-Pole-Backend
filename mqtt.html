@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Energy App</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1"></script>
+
+<style>
+body {
+  margin: 0;
+  font-family: Arial;
+  background: #0f172a;
+  color: white;
+}
+
+header {
+  padding: 12px;
+  text-align: center;
+  font-size: 18px;
+  background: #020617;
+}
+
+/* KPI */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(2,1fr);
+  gap: 10px;
+  padding: 10px;
+}
+
+.card {
+  background: #1e293b;
+  padding: 12px;
+  border-radius: 12px;
+  text-align: center;
+}
+
+.card h1 {
+  font-size: 20px;
+  margin: 5px 0;
+}
+
+/* BUTTON */
+.controls {
+  text-align: center;
+  margin: 10px;
+}
+
+button {
+  padding: 8px 12px;
+  margin: 5px;
+  border-radius: 8px;
+  border: none;
+  font-weight: bold;
+}
+
+/* CHART */
+.chart-box {
+  background: #020617;
+  margin: 10px;
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.chart-title {
+  margin-bottom: 5px;
+  font-size: 14px;
+}
+
+canvas {
+  width: 100%;
+  height: 260px !important;
+}
+</style>
+</head>
+
+<body>
+
+<header>⚡ Energy Monitor</header>
+
+<div class="controls">
+  <button onclick="loadHistory(3600000)">1H</button>
+  <button onclick="loadHistory(86400000)">24H</button>
+</div>
+
+<div class="cards">
+  <div class="card"><h3>Voltage</h3><h1 id="v">-</h1></div>
+  <div class="card"><h3>Current</h3><h1 id="c">-</h1></div>
+  <div class="card"><h3>Power</h3><h1 id="p">-</h1></div>
+  <div class="card"><h3>Energy</h3><h1 id="e">-</h1></div>
+</div>
+
+<div class="chart-box">
+  <div class="chart-title">Voltage</div>
+  <canvas id="chartV"></canvas>
+</div>
+
+<div class="chart-box">
+  <div class="chart-title">Current</div>
+  <canvas id="chartC"></canvas>
+</div>
+
+<div class="chart-box">
+  <div class="chart-title">Power</div>
+  <canvas id="chartP"></canvas>
+</div>
+
+<div class="chart-box">
+  <div class="chart-title">Energy</div>
+  <canvas id="chartE"></canvas>
+</div>
+
+<script>
+const TB_URL = "http://theoneiot.i234.me:9090";
+const DEVICE_ID = "bc2557d0-46a8-11f1-8573-dd37fef65191";
+
+let token;
+
+// ===== chart factory =====
+function makeChart(id,label){
+  return new Chart(document.getElementById(id),{
+    type:'line',
+    data:{labels:[],datasets:[{label:label,data:[],borderWidth:2}]},
+    options:{
+      animation:false,
+      plugins:{
+        zoom:{
+          zoom:{wheel:{enabled:true},mode:'x'},
+          pan:{enabled:true,mode:'x'}
+        }
+      }
+    }
+  });
+}
+
+const chartV = makeChart("chartV","Voltage");
+const chartC = makeChart("chartC","Current");
+const chartP = makeChart("chartP","Power");
+const chartE = makeChart("chartE","Energy");
+
+// ===== login =====
+async function login(){
+  const r = await fetch(TB_URL+"/api/auth/login",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      username:"tenant@thingsboard.org",
+      password:"tenant"
+    })
+  });
+  return (await r.json()).token;
+}
+
+// ===== realtime =====
+async function realtime(){
+  const r = await fetch(
+    `${TB_URL}/api/plugins/telemetry/DEVICE/${DEVICE_ID}/values/timeseries?keys=voltage,current,power,energy`,
+    {headers:{"X-Authorization":"Bearer "+token}}
+  );
+
+  const d = await r.json();
+
+  document.getElementById("v").innerText = d.voltage?.slice(-1)[0]?.value ?? "-";
+  document.getElementById("c").innerText = d.current?.slice(-1)[0]?.value ?? "-";
+  document.getElementById("p").innerText = d.power?.slice(-1)[0]?.value ?? "-";
+  document.getElementById("e").innerText = d.energy?.slice(-1)[0]?.value ?? "-";
+}
+
+// ===== history (แก้เวลา + sort แล้ว) =====
+async function loadHistory(ms){
+
+  const end = Date.now();
+  const start = end - ms;
+
+  const r = await fetch(
+    `${TB_URL}/api/plugins/telemetry/DEVICE/${DEVICE_ID}/values/timeseries?keys=voltage,current,power,energy&startTs=${start}&endTs=${end}&interval=60000`,
+    {headers:{"X-Authorization":"Bearer "+token}}
+  );
+
+  const d = await r.json();
+
+  // 🔥 รวม + sort เวลา
+  let combined = d.voltage.map((v, i) => ({
+    ts: v.ts,
+    voltage: parseFloat(v.value),
+    current: parseFloat(d.current[i]?.value || 0),
+    power: parseFloat(d.power[i]?.value || 0),
+    energy: parseFloat(d.energy[i]?.value || 0)
+  }));
+
+  combined.sort((a,b)=>a.ts-b.ts);
+
+  const labels = combined.map(x =>
+    new Date(x.ts).toLocaleTimeString('en-GB') // ✅ 24 ชม
+  );
+
+  chartV.data.labels = labels;
+  chartV.data.datasets[0].data = combined.map(x=>x.voltage);
+
+  chartC.data.labels = labels;
+  chartC.data.datasets[0].data = combined.map(x=>x.current);
+
+  chartP.data.labels = labels;
+  chartP.data.datasets[0].data = combined.map(x=>x.power);
+
+  chartE.data.labels = labels;
+  chartE.data.datasets[0].data = combined.map(x=>x.energy);
+
+  chartV.update();
+  chartC.update();
+  chartP.update();
+  chartE.update();
+}
+
+// ===== start =====
+(async ()=>{
+  token = await login();
+  await loadHistory(3600000); // เริ่มที่ 1 ชม
+  setInterval(realtime,2000);
+})();
+</script>
+
+</body>
+</html>

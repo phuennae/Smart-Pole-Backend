@@ -1,0 +1,7 @@
+streams:
+  cam1:
+    - ffmpeg:rtsp://admin:%2AsS5383160@192.168.2.64:554/Streaming/Channels/101#video=copy#audio=opus
+  cam2:
+    - ffmpeg:rtsp://admin:%2AsS5383160@192.168.3.64:554/Streaming/Channels/101#video=copy#audio=opus
+  pb_9_1782391842:
+    - ffmpeg:rtsp://admin:%2AsS5383160@192.168.3.64:554/Streaming/tracks/101?starttime=20260624T193549Z&endtime=20260625T002624Z#video=copy#audio=opus#rtsp_transport=tcp

@@ -1,0 +1,11 @@
+# ไฟล์ตั้งค่าที่มีความลับ
+config.php
+
+# ไฟล์ระบบของ IDE และ XAMPP
+.vscode/
+.idea/
+.DS_Store
+
+# หากมีโฟลเดอร์เก็บ log หรือ temp
+*.log
+temp/
