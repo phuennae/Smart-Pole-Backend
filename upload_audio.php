@@ -19,24 +19,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['audioFile']) && !emp
     
     $file = $_FILES['audioFile'];
     
-    // ตรวจสอบนามสกุล
-    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-    if (!in_array($ext, ['mp3', 'wav', 'ogg'])) {
-        echo json_encode(['status' => 'error', 'message' => 'รองรับเฉพาะไฟล์เพลงเท่านั้น']);
+    // 1. ตรวจสอบว่าไฟล์อัปโหลดมาถึง PHP สมบูรณ์ไหม
+    if ($file['error'] !== 0) {
+        echo json_encode(['status' => 'error', 'message' => 'เกิดข้อผิดพลาดในการรับไฟล์บน Server']);
         exit;
     }
 
-    // --- ส่วนสำคัญ: ส่งต่อไฟล์ไปที่ ESP32 ---
-    global $api_key;
-    
-    // ⚠️ หมายเหตุ: URL ปลายทางของ ESP32 ปกติมักจะเป็น /upload หรือ /edit
-    // สมมติว่า ESP32 ของคุณใช้ Endpoint ชื่อ /upload
-    $esp32_url = "http://{$ip}:{$port}/upload?key=" . urlencode($api_key);
+    // 2. ตรวจสอบนามสกุลไฟล์ (บังคับเฉพาะ .mp3 ตามที่ปรับแก้ล่าสุด)
+    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    if ($ext !== 'mp3') {
+        echo json_encode(['status' => 'error', 'message' => 'ระบบรองรับเฉพาะไฟล์ .mp3 เท่านั้น']);
+        exit;
+    }
 
-    // เตรียมไฟล์เพื่อส่งผ่าน cURL
-    $cfile = new CURLFile($file['tmp_name'], $file['type'], $file['name']);
+    // 3. เตรียมส่งต่อไฟล์ข้ามไปที่ ESP32 
+    global $api_key;
+    $esp32_url = "http://{$ip}:{$port}/upload";
     
-    // ตั้งชื่อ key ที่จะส่งไป ESP32 (ปกติบอร์ด Arduino มักจะรับชื่อ 'file' หรือ 'data')
+    // แนบ API Key ถ้ามีตั้งค่าไว้ใน config
+    if (!empty($api_key)) {
+        $esp32_url .= "?key=" . urlencode($api_key);
+    }
+
+    // 🔥 จุดสำคัญ: ดึงไฟล์จาก โฟลเดอร์ชั่วคราว ($file['tmp_name']) มาส่งต่อตรงๆ โดยไม่ใช้ move_uploaded_file()
+    $cfile = new CURLFile($file['tmp_name'], $file['type'], $file['name']);
     $post_data = array('file' => $cfile); 
 
     $ch = curl_init();
@@ -45,19 +51,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['audioFile']) && !emp
     curl_setopt($ch, CURLOPT_POSTFIELDS, $post_data);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 60); // เผื่อเวลาให้ ESP32 เขียนลง SD Card (ไฟล์ใหญ่อาจจะนาน)
+    curl_setopt($ch, CURLOPT_TIMEOUT, 600); // เผื่อเวลาให้ WiFi ส่งไฟล์และ ESP32 เขียนลง SD Card จนเสร็จ
 
     $response = curl_exec($ch);
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
+    // หลังจบกระบวนการนี้ PHP จะลบไฟล์ Temp ในโฟลเดอร์ XAMPP ทิ้งให้ทันที
     if ($http_code === 200) {
-        echo json_encode(['status' => 'success', 'message' => 'อัปโหลดลง SD Card สำเร็จ!']);
+        echo json_encode(['status' => 'success', 'message' => 'อัปโหลดลง SD Card ของเสาสำเร็จ!']);
     } else {
         echo json_encode(['status' => 'error', 'message' => 'ESP32 ปฏิเสธการรับไฟล์ (HTTP Code: ' . $http_code . ')']);
     }
 
 } else {
-    echo json_encode(['status' => 'error', 'message' => 'ส่งข้อมูลมาไม่ครบ (ต้องการไฟล์ และ IP)']);
+    echo json_encode(['status' => 'error', 'message' => 'ส่งข้อมูลมาไม่ครบถ้วน']);
 }
 ?>
