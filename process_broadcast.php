@@ -1,13 +1,22 @@
 <?php
-// 1. ตรวจสอบไฟล์ config และ Session
+// 🔥 1. เพิ่ม Header อนุญาต CORS ให้ React สามารถเรียกใช้งานไฟล์นี้ได้
+header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type");
+
+// จัดการ Pre-flight request ของ Browser
+if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') { exit(0); }
+
+// 2. ตรวจสอบไฟล์ config 
 if (!file_exists('config.php')) {
     die("Error: ไม่พบไฟล์ config.php ในระบบ");
 }
 require_once 'config.php'; 
 
-if (!isset($_SESSION['user_id'])) {
-    die("Unauthorized: กรุณาเข้าสู่ระบบ");
-}
+// 🔥 3. ปิดการเช็ค Session ชั่วคราว (ใส่ // นำหน้า) เพื่อให้ React สั่งงานได้โดยไม่ต้อง Login ผ่าน PHP
+// if (!isset($_SESSION['user_id'])) {
+//     die("Unauthorized: กรุณาเข้าสู่ระบบ");
+// }
 
 // รับค่า action จากทั้ง GET และ POST
 $action = $_REQUEST['action'] ?? '';
@@ -21,7 +30,17 @@ $nodes = $stmt->fetchAll(PDO::FETCH_ASSOC);
  * ฟังก์ชันกลางสำหรับส่งคำสั่ง HTTP GET ไปยัง ESP32
  */
 function sendToESP($ip, $path, $port = 80, $timeout = 1) {
+    global $api_key; // 🔥 ดึง API Key จาก config มาเตรียมไว้
+    
+    // ประกอบ URL สำหรับส่งคำสั่ง
     $url = "http://{$ip}:{$port}{$path}";
+    
+    // 🔥 แนบ API Key ต่อท้ายเข้าไปด้วย (เผื่อ ESP32 ต้องการรหัสผ่านป้องกันคนนอก)
+    if (!empty($api_key) && strpos($path, 'key=') === false) {
+        $separator = (strpos($path, '?') !== false) ? '&' : '?';
+        $url .= $separator . "key=" . urlencode($api_key);
+    }
+
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_CONNECTTIMEOUT_MS, 500); 
@@ -59,7 +78,8 @@ if ($action == 'play_single') {
         sendToESP($ip, "/play?path=" . urlencode($file), $port, 5);
         $msg = "สั่งเล่นไฟล์ {$file} สำเร็จ";
     }
-    header("Location: index.php?msg=" . urlencode($msg));
+    // ตอบกลับเป็น Text ธรรมดาให้ React รู้ว่าเสร็จแล้ว
+    echo "OK_Play"; 
     exit;
 }
 
@@ -71,7 +91,7 @@ if ($action == 'stop_single') {
         sendToESP($ip, "/stop", $port, 2);
         $msg = "สั่งหยุดเพลงเรียบร้อย";
     }
-    //header("Location: index.php?msg=" . urlencode($msg));
+    echo "OK_Stopped"; 
     exit;
 }
 
@@ -84,7 +104,7 @@ if ($action == 'delete_single') {
         sendToESP($ip, "/delete?path=" . urlencode($file), $port, 5);
         $msg = "ลบไฟล์สำเร็จ";
     }
-    header("Location: index.php?msg=" . urlencode($msg));
+    echo "OK_Deleted";
     exit;
 }
 
@@ -111,7 +131,7 @@ if ($action == 'upload_single') {
             echo ($http_code == 200) ? "success" : "failed_" . $http_code;
             exit;
         } else {
-            header("Location: index.php?msg=UploadFinished");
+            echo ($http_code == 200) ? "UploadFinished" : "UploadFailed";
             exit;
         }
     }
@@ -129,7 +149,6 @@ if ($action == 'play') {
     exit;
 }
 
-// เพิ่มใน process_broadcast.php
 if ($action == 'play_live_selected') {
     $nodes_to_play = json_decode($_POST['nodes'], true);
     $stream_url = "http://theoneiot.i234.me:3000/stream"; 
@@ -138,21 +157,14 @@ if ($action == 'play_live_selected') {
         foreach ($nodes_to_play as $node) {
             $ip = $node['ip'];
             $port = $node['port'] ?? 80;
-			
-			
-			// ==========================================
+            
             // 1. เพิ่มส่วนการดึงค่า Volume และส่งไปตั้งค่าที่ ESP32
-            // ==========================================
             if (isset($node['vol'])) {
                 // แปลงค่า 0-100% ให้เป็น 0-21
                 $espVol = round(((int)$node['vol'] * 21) / 100);
-                
-                // ใช้ฟังก์ชัน sendToESP ที่มีอยู่แล้ว ยิงไปเซ็ตเสียง (ให้เวลา 1 วินาที)
                 sendToESP($ip, "/vol?v={$espVol}", $port, 1);
             }
-            // ==========================================
-			
-			
+            
             $target = "http://{$ip}:{$port}/play_live?url=" . urlencode($stream_url);
             
             $ch = curl_init($target);
@@ -166,9 +178,6 @@ if ($action == 'play_live_selected') {
     echo "SelectedNodesLiveStarted";
     exit;
 }
-
-//***************************************************
-// --- เพิ่มส่วนนี้ใน process_broadcast.php ---
 
 // สั่งเล่นไฟล์เสียงเฉพาะกลุ่มโหนดที่เลือก (Bulk File Play)
 if ($action == 'play_selected') {
@@ -201,9 +210,7 @@ if ($action == 'play_selected') {
     }
     exit;
 }
-//********************************************************************************
 
-// เพิ่มส่วนนี้ในไฟล์ process_broadcast.php
 if (isset($_POST['action']) && $_POST['action'] == 'stop_selected') {
     $nodes = json_decode($_POST['nodes'], true);
     if ($nodes) {
@@ -224,7 +231,6 @@ if (isset($_POST['action']) && $_POST['action'] == 'stop_selected') {
     echo "Nodes stopped successfully";
     exit;
 }
-
 
 if ($action == 'stop') {
     foreach ($nodes as $node) {
@@ -247,23 +253,8 @@ if ($action == 'vol') {
     header("Location: index.php?msg=BroadcastVolumeSuccess");
     exit;
 }
-// --- แก้ไขใน process_broadcast.php ---
-// --- ใน process_broadcast.php ---
-
-// ปรับเสียงรายเครื่อง และบันทึกลง DB
-// 1. ตรวจสอบส่วนหยุดเพลง
-if ($action == 'stop_single') {
-    $ip = $_GET['ip'] ?? '';
-    $port = $_GET['port'] ?? 80;
-    if (!empty($ip)) {
-        sendToESP($ip, "/stop", $port, 2);
-    }
-    echo "OK_Stopped"; 
-    exit;
-}
 
 // 2. ตรวจสอบส่วนปรับเสียง (ต้องมี SQL Update)
-// --- แก้ไขส่วน vol_single ใน process_broadcast.php ---
 if ($action == 'vol_single') {
     $node_id = $_GET['id'] ?? ''; // รับ ID มาจาก JavaScript
     $ip = $_GET['ip'] ?? '';
@@ -282,6 +273,6 @@ if ($action == 'vol_single') {
     exit;
 }
 
-// ถ้าไม่มี Action ตรงเลย ให้ดีดกลับหน้าหลัก
-header("Location: index.php");
+// ถ้าไม่มี Action ตรงเลย ให้ดีดกลับ
+echo "Invalid_Action";
 exit;

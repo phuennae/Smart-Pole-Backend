@@ -4,13 +4,18 @@ header("Content-Type: application/json; charset=UTF-8");
 require_once 'config.php';
 
 $id = $_GET['id'] ?? 0;
-$stmt = $pdo->prepare("SELECT ip_address, port FROM nodes WHERE id = ?");
+
+// 🔥 ดึง tb_device_id ออกมาจากฐานข้อมูลเพิ่มด้วย
+$stmt = $pdo->prepare("SELECT ip_address, port, tb_device_id FROM nodes WHERE id = ?");
 $stmt->execute([$id]);
 $node = $stmt->fetch();
 
 if ($node) {
     $ip = $node['ip_address'];
     $port = $node['port'] ?: 80;
+    
+    // เก็บค่า Device ID ของ ThingsBoard
+    $tb_device_id = $node['tb_device_id']; 
     
     // ตั้งค่า Timeout ป้องกันเว็บค้าง
     $ctx = stream_context_create(['http' => ['timeout' => 2]]);
@@ -50,6 +55,7 @@ if ($node) {
     echo json_encode([
         'status' => 'success',
         'online' => $st ? true : false,
+        'tb_device_id' => $tb_device_id, // 🔥 ส่งค่านี้กลับไปให้ React
         'song' => ($st && isset($st['song'])) ? $st['song'] : "",
         'data' => [
             'voltage' => $voltage,
