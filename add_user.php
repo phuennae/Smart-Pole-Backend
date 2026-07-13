@@ -2,16 +2,18 @@
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type");
+header("Content-Type: application/json; charset=UTF-8");
+
 if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') { exit(0); }
 
 include 'config.php';
 
-$user = isset($_POST['username']) ? $_POST['username'] : '';
-$pass = isset($_POST['password']) ? $_POST['password'] : '';
-$role = isset($_POST['role']) ? $_POST['role'] : 'user';
+$user = $_POST['username'] ?? '';
+$pass = $_POST['password'] ?? '';
+$role = $_POST['role'] ?? 'user';
 
 if ($user != '' && $pass != '') {
-    // เข้ารหัสผ่านแบบเดียวกับที่ซัพพลายเออร์ทำ
+    // 💡 เข้ารหัสผ่านแบบ bcrypt
     $hashed_pass = password_hash($pass, PASSWORD_DEFAULT);
     
     // แปลง Role ให้เป็นตัวพิมพ์เล็ก (admin / user) ให้ตรงกับ DB
