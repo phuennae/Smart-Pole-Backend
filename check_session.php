@@ -15,17 +15,25 @@ if (!$id || !$token) {
     exit;
 }
 
-$stmt = $pdo->prepare("SELECT session_token FROM users WHERE id = ?");
+$stmt = $pdo->prepare("SELECT session_token, last_active FROM users WHERE id = ?");
 $stmt->execute([$id]);
 $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if ($row && $row['session_token'] === $token) {
-    // ✅ ตั๋วถูกต้อง อัปเดตเวลาล่าสุดให้ (ต่ออายุ)
-    $now_str = date('Y-m-d H:i:s');
-    $update_stmt = $pdo->prepare("UPDATE users SET last_active = ? WHERE id = ?");
-    $update_stmt->execute([$now_str, $id]);
     
-    echo json_encode(['valid' => true]);
+    $last_active = !empty($row['last_active']) ? strtotime($row['last_active']) : 0;
+    $now = time();
+
+    if (($now - $last_active) > 1800) {
+        echo json_encode(['valid' => false]);
+    } else {
+        $now_str = date('Y-m-d H:i:s');
+        $update_stmt = $pdo->prepare("UPDATE users SET last_active = ? WHERE id = ?");
+        $update_stmt->execute([$now_str, $id]);
+        
+        echo json_encode(['valid' => true]);
+    }
+    
 } else {
     echo json_encode(['valid' => false]);
 }
