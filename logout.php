@@ -1,23 +1,16 @@
 <?php
-// เริ่มต้น session เพื่อให้เข้าถึงข้อมูลปัจจุบันได้
-session_start();
+header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Methods: POST, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type");
+if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') { exit(0); }
 
-// ลบตัวแปร session ทั้งหมด
-$_SESSION = array();
+include 'config.php';
+$id = isset($_POST['id']) ? $_POST['id'] : '';
 
-// ถ้ามีการใช้ cookie สำหรับ session ให้ลบทิ้งด้วย
-if (ini_get("session.use_cookies")) {
-    $params = session_get_cookie_params();
-    setcookie(session_name(), '', time() - 42000,
-        $params["path"], $params["domain"],
-        $params["secure"], $params["httponly"]
-    );
+if ($id) {
+    // ล้าง token และเวลาทิ้ง
+    $stmt = $pdo->prepare("UPDATE users SET session_token = NULL, last_active = NULL WHERE id = ?");
+    $stmt->execute([$id]);
 }
-
-// ทำลาย session
-session_destroy();
-
-// ส่งผู้ใช้กลับไปหน้า login หรือหน้าหลัก
-header("Location: login.php");
-exit;
+echo json_encode(['status' => 'success']);
 ?>
