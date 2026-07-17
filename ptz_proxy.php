@@ -1,11 +1,11 @@
 <?php
-// ptz_proxy.php - PHP ONVIF Proxy (ผสานโค้ดเวอร์ชันซัพ + ปลดล็อค CORS สำหรับ React)
+// ptz_proxy.php - PHP ONVIF Proxy (ผสานโค้ดเวอร์ชันซัพ + ปลดล็อค CORS + เอาการเช็ค Session ออก)
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
-// 1. จัดการ Preflight Request จาก React ไม่ต้องไปถามหา Session
+// 1. จัดการ Preflight Request จาก React ไม่ให้โดนบล็อก CORS
 if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') { 
     http_response_code(200);
     exit(0); 
@@ -158,7 +158,7 @@ try {
             } else {
                 echo json_encode([
                     'success' => false, 
-                    'error' => "HTTP {$result['httpCode']} - " . $result['error'], // เพิ่ม curl_error เข้าไป
+                    'error' => "HTTP {$result['httpCode']} - " . $result['error'], 
                     'response' => $result['response']
                 ]);
             }
